@@ -1,8 +1,9 @@
-weldpay/
-  index.html
-  view.html
-  netlify.toml
-  package.json
+index.html
+view.html
+assets/
+functions/
+netlify.toml   (or _redirects)
+README.md
   README.md
   assets/
     styles.css
