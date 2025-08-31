@@ -1,18 +1,69 @@
-index.html
-view.html
-assets/
-functions/
-netlify.toml   (or _redirects)
-  README.md
-  assets/
-    styles.css
-    app.js
-    view.js
-  functions/
-    create-checkout-session.js
-    send-email.js
-    send-sms.js
-    invoices.js
+/index.html
+/view.html
+/assets/
+  styles.css
+  app.js
+  view.js
+/functions/
+  invoices.js
+  create-checkout-session.js
+  send-email.js
+  send-sms.js
+/netlify.toml
+/package.json
+/README.md
+[build]
+  functions = "functions"
+  publish = "."
+
+[functions]
+  node_bundler = "esbuild"
+  external_node_modules = ["stripe"]
+
+[[redirects]]
+  from = "/assets/*"
+  to = "/assets/:splat"
+  status = 200
+
+[[redirects]]
+  from = "/view.html"
+  to = "/view.html"
+  status = 200
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+{
+  "name": "weldpay",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "dependencies": {
+    "@netlify/blobs": "^7.0.0",
+    "stripe": "^12.18.0"
+  }
+}
+# WeldPay
+
+Single-page invoice app for Netlify with:
+- Server-side invoice saving (Netlify Blobs) via `/.netlify/functions/invoices`
+- Stripe Checkout payments (optional)
+- SendGrid email (optional)
+- Twilio SMS (optional)
+
+## Netlify environment variables
+- SITE_URL = https://weldpay.org
+- API_SECRET = <long random>        # (optional but recommended)
+- STRIPE_SECRET = sk_test_...       # (optional, for Pay)
+- SENDGRID_API_KEY = ...            # (optional, for Email)
+- FROM_EMAIL = hello@weldpay.org
+- TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM  # (optional, for SMS)
+
+## Deploy
+- Publish directory: `.`
+- Functions directory: `functions`
+- No build command
 <!doctype html>
 <html lang="en">
 <head>
@@ -88,61 +139,36 @@ netlify.toml   (or _redirects)
         <div class="two-col">
           <div class="panel">
             <h2>Client</h2>
-            <label>Client Name
-              <input class="input" id="clientName" placeholder="Customer LLC" />
-            </label>
-            <label>Email (prefilled to Email To)
-              <input class="input" id="clientEmail" placeholder="customer@email.com" />
-            </label>
-            <label>Phone (for SMS)
-              <input class="input" id="clientPhone" placeholder="+1 555-555-5555" />
-            </label>
-            <label>Invoice Title
-              <input class="input" id="invoiceTitle" placeholder="Trailer repair / garden beds" />
-            </label>
-            <label>Invoice Number
-              <input class="input" id="invoiceNumber" placeholder="INV-1001" />
-            </label>
+            <label>Client Name <input class="input" id="clientName" /></label>
+            <label>Email <input class="input" id="clientEmail" /></label>
+            <label>Phone <input class="input" id="clientPhone" placeholder="+1 555-555-5555" /></label>
+            <label>Invoice Title <input class="input" id="invoiceTitle" /></label>
+            <label>Invoice Number <input class="input" id="invoiceNumber" placeholder="INV-1001" /></label>
             <label>Status
               <select class="input" id="invoiceStatus">
-                <option value="DRAFT">DRAFT</option>
-                <option value="ESTIMATE">ESTIMATE</option>
-                <option value="SENT">SENT</option>
-                <option value="PARTIAL">PARTIAL</option>
-                <option value="PAID">PAID</option>
-                <option value="VOID">VOID</option>
+                <option>DRAFT</option><option>ESTIMATE</option><option>SENT</option>
+                <option>PARTIAL</option><option>PAID</option><option>VOID</option>
               </select>
             </label>
             <div class="row gap">
-              <label>Issue Date
-                <input type="date" class="input" id="issueDate" />
-              </label>
-              <label>Due Date
-                <input type="date" class="input" id="dueDate" />
-              </label>
+              <label>Issue <input type="date" class="input" id="issueDate" /></label>
+              <label>Due <input type="date" class="input" id="dueDate" /></label>
             </div>
           </div>
 
           <div class="panel">
             <h2>Branding</h2>
-            <label>Logo (PNG/SVG/JPG)
-              <input type="file" id="logoFile" accept="image/*" />
-            </label>
+            <label>Logo <input type="file" id="logoFile" accept="image/*" /></label>
             <div class="row">
-              <label>Brand Color
-                <input type="color" id="brandColor" />
-              </label>
+              <label>Brand Color <input type="color" id="brandColor" /></label>
               <label>Theme
-                <select id="themeSelect">
-                  <option value="light">Light</option>
-                  <option value="dark">Dark</option>
-                </select>
+                <select id="themeSelect"><option value="dark">Dark</option><option value="light">Light</option></select>
               </label>
             </div>
             <label>Header Layout
               <select id="headerLayout">
-                <option value="logo-left">Logo left, info right</option>
-                <option value="logo-right">Logo right, info left</option>
+                <option value="logo-left">Logo left</option>
+                <option value="logo-right">Logo right</option>
                 <option value="stacked">Stacked</option>
               </select>
             </label>
@@ -152,15 +178,7 @@ netlify.toml   (or _redirects)
         <div class="panel">
           <h2>Line Items</h2>
           <table class="table" id="itemsTable">
-            <thead>
-              <tr>
-                <th>Description</th>
-                <th>Qty</th>
-                <th>Rate</th>
-                <th>Amount</th>
-                <th></th>
-              </tr>
-            </thead>
+            <thead><tr><th>Description</th><th>Qty</th><th>Rate</th><th>Amount</th><th></th></tr></thead>
             <tbody id="itemsBody"></tbody>
           </table>
           <button class="btn" id="btnAddItem">+ Add Item</button>
@@ -181,18 +199,15 @@ netlify.toml   (or _redirects)
             <h2>Signature</h2>
             <div class="sig-wrap">
               <canvas id="sigPad"></canvas>
-              <div class="sig-actions">
-                <button class="btn" id="btnClearSig">Clear</button>
-              </div>
+              <div class="sig-actions"><button class="btn" id="btnClearSig">Clear</button></div>
             </div>
-            <label>E-Sign acknowledgment (shown under signature on PDF)
-              <textarea class="input" id="esignAck" rows="3" placeholder="I acknowledge the work description, price, and terms..."></textarea>
+            <label>E-Sign acknowledgment
+              <textarea class="input" id="esignAck" rows="3" placeholder="I acknowledge the work description, price, and terms."></textarea>
             </label>
           </div>
-
           <div class="panel">
             <h2>Notes & Terms</h2>
-            <textarea class="input" id="notes" rows="9" placeholder="Work details, terms, warranty notes, etc."></textarea>
+            <textarea class="input" id="notes" rows="9"></textarea>
           </div>
         </div>
 
@@ -208,15 +223,9 @@ netlify.toml   (or _redirects)
         <div id="emailModal" class="modal">
           <div class="modal-content">
             <h3>Email Invoice</h3>
-            <label>Email To
-              <input class="input" id="emailTo" placeholder="client@email.com" />
-            </label>
-            <label>Subject
-              <input class="input" id="emailSubject" />
-            </label>
-            <label>Message
-              <textarea class="input" id="emailMessage" rows="4"></textarea>
-            </label>
+            <label>Email To <input class="input" id="emailTo" /></label>
+            <label>Subject <input class="input" id="emailSubject" /></label>
+            <label>Message <textarea class="input" id="emailMessage" rows="4"></textarea></label>
             <div class="row end gap">
               <button class="btn" id="btnCloseEmail">Cancel</button>
               <button class="btn primary" id="btnDoEmail">Send</button>
@@ -242,9 +251,7 @@ netlify.toml   (or _redirects)
   <div id="previewModal" class="modal">
     <div class="modal-content wide">
       <div id="invoicePreview"></div>
-      <div class="row end gap">
-        <button class="btn" id="btnClosePreview">Close</button>
-      </div>
+      <div class="row end gap"><button class="btn" id="btnClosePreview">Close</button></div>
     </div>
   </div>
 
@@ -277,544 +284,207 @@ netlify.toml   (or _redirects)
     </nav>
   </header>
 
-  <main>
-    <div id="publicInvoice" class="invoice paper"></div>
-  </main>
+  <main><div id="publicInvoice" class="invoice paper"></div></main>
 
   <script src="/assets/view.js"></script>
 </body>
 </html>
-[build]
-  functions = "functions"
-  publish = "."
-
-[[redirects]]
-  from = "/*"
-  to = "/index.html"
-  status = 200
-{
-  "name": "weldpay-netlify",
-  "private": true,
-  "version": "1.0.1",
-  "type": "module",
-  "dependencies": {
-    "@netlify/blobs": "^7.0.0",
-    "stripe": "^12.18.0"
-  }
-}
-# WeldPay — Netlify Bundle
-
-Deploy via GitHub → Netlify (no build step). Publish dir: `.` Functions: `functions`.
-
-## Features
-- Invoice dashboard & editor
-- Signature capture + acknowledgment on PDF
-- Public “View Invoice” with Pay + Download PDF
-- Email (SendGrid) & SMS (Twilio)
-- Stripe Checkout payments
-- Logo/brand color/header layout, light/dark paper
-- **Server-side invoice saving with Netlify Blobs** at `/.netlify/functions/invoices`
-
-## Environment variables (Netlify → Site settings → Environment)
-- `STRIPE_SECRET` (Stripe secret key)  
-- `SITE_URL` (e.g., `https://weldpay.org`)
-- `SENDGRID_API_KEY`, `FROM_EMAIL` (for email sending)
-- `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM` (for SMS)
-- `API_SECRET` (optional; required if you want to protect the invoices API)
-
-### Protect admin calls
-Set `API_SECRET` in Netlify and in your browser (once) run:
-```js
-localStorage.setItem('weldpay/apiSecret','YOUR_LONG_RANDOM_SECRET')
-
----
-
-## `assets/styles.css`
-
-```css
 :root {
-  --bg: #0b0b0c;
-  --panel: #15161a;
-  --text: #e5e7eb;
-  --muted: #9ca3af;
-  --primary: #ef4444;
-  --ok: #22c55e;
-  --warn: #f59e0b;
-  --danger: #ef4444;
-  --paper: #ffffff;
+  --bg:#0b0b0c; --panel:#15161a; --text:#e5e7eb; --muted:#9ca3af;
+  --primary:#ef4444; --ok:#22c55e; --warn:#f59e0b; --danger:#ef4444; --paper:#ffffff;
 }
-* { box-sizing: border-box; }
-html, body { margin:0; padding:0; background: var(--bg); color: var(--text); font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
-.topbar { display:flex; align-items:center; justify-content:space-between; padding:12px 16px; background: #0f1014; border-bottom:1px solid #22242b; position: sticky; top:0; z-index: 10;}
-.brand { display:flex; gap:12px; align-items:center; }
-.brand-logo { width:32px; height:32px; border-radius:8px; background: linear-gradient(135deg, var(--primary), #333); box-shadow: inset 0 0 0 2px #000; }
-.nav { display:flex; gap:8px; }
-.btn { background:#24262f; color:#fff; border:1px solid #2d303a; padding:8px 12px; border-radius:10px; cursor:pointer; }
-.btn:hover { border-color:#3b3f4d; }
-.btn.primary { background: var(--primary); border-color: transparent; }
-.btn.sm { padding:4px 8px; font-size: 12px; }
-.btn.danger { background: #3b0a0a; border-color: #6b1313; }
-.input, select, textarea { width:100%; background:#0b0c10; color:#fff; border:1px solid #2b2f3a; padding:10px; border-radius:10px; }
-.input.sm { width: 110px; }
-.view { display:none; padding:20px; }
-.view.visible { display:block; }
-.cards { display:grid; grid-template-columns: repeat(3, 1fr); gap:12px; margin-bottom: 16px; }
-.card { background: var(--panel); border:1px solid #232631; border-radius:12px; padding:14px; }
-.stat { font-size: 28px; margin-top:4px; }
-.table-wrap { background: var(--panel); border:1px solid #232631; border-radius:12px; }
-.table { width:100%; border-collapse:collapse; }
-.table th, .table td { border-bottom:1px solid #232631; padding:10px; text-align:left; }
-.table tr:last-child td { border-bottom:none; }
-.table-header { display:flex; align-items:center; justify-content:space-between; padding:12px; }
-.two-col { display:grid; grid-template-columns: 1fr 1fr; gap:12px; }
-.panel { background: var(--panel); border:1px solid #232631; border-radius:12px; padding:14px; margin-bottom:12px; }
-.row { display:flex; align-items:center; }
-.row.end { justify-content:flex-end; }
-.gap { gap:10px; }
-.sig-wrap { background:#0b0c10; border:1px dashed #3b3f4d; border-radius:12px; padding:10px; }
-#sigPad { width:100%; height:180px; background:#0b0c10; border-radius:8px; }
-.totals { display:flex; align-items:center; gap:12px; justify-content:space-between; margin-top:10px; flex-wrap: wrap; }
-.sum { margin-left:auto; display:grid; gap:6px; }
-.sum .grand { font-size:20px; }
-.actions { display:flex; gap:10px; flex-wrap: wrap; }
-.toast { position: fixed; bottom: 16px; right: 16px; background: #11131a; border: 1px solid #2c3240; padding: 10px 12px; border-radius: 10px; opacity: 0; transform: translateY(8px); transition: all .25s; pointer-events: none; }
-.toast.show { opacity: 1; transform: translateY(0); }
-.modal { position:fixed; inset:0; background: rgba(0,0,0,.6); display:none; align-items:center; justify-content:center; padding:18px; }
-.modal .modal-content { background: #0b0c10; border:1px solid #2b2f3a; border-radius:12px; padding: 16px; width:min(900px, 95vw); max-height: 90vh; overflow:auto; }
-.modal .modal-content.wide { width: min(1100px, 95vw); }
-.modal.show { display:flex; }
-.paper { background: var(--paper); color:#111; padding:24px; border-radius: 6px; width: 900px; margin: 20px auto; border: 1px solid #ddd; position: relative; overflow: hidden; }
-.invoice-header { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; }
-.invoice-header.stack { flex-direction:column; }
-.invoice-logo { width:160px; height: 100px; object-fit: contain; }
-.watermark { position:absolute; inset:0; pointer-events:none; display:flex; align-items:center; justify-content:center; font-size:110px; color: rgba(0,0,0,.06); transform: rotate(-25deg); }
-.badge { padding: 4px 8px; border-radius: 6px; font-size: 12px; background: #eee; border: 1px solid #ddd; }
-.public .topbar { position: sticky; top:0; }
-
-.preview-wrap { background:#0b0b0c; padding:12px; }
-.preview-wrap .paper { box-shadow: 0 10px 50px rgba(0,0,0,.4); }
-
-@media (max-width: 980px) {
-  .two-col { grid-template-columns: 1fr; }
-  .cards { grid-template-columns: 1fr; }
-  .paper { width: 100%; }
-}
-// WeldPay front-end app
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}
+.topbar{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;background:#0f1014;border-bottom:1px solid #22242b;position:sticky;top:0;z-index:10}
+.brand{display:flex;gap:12px;align-items:center}
+.brand-logo{width:32px;height:32px;border-radius:8px;background:linear-gradient(135deg,var(--primary),#333);box-shadow:inset 0 0 0 2px #000}
+.nav{display:flex;gap:8px}
+.btn{background:#24262f;color:#fff;border:1px solid #2d303a;padding:8px 12px;border-radius:10px;cursor:pointer}
+.btn:hover{border-color:#3b3f4d}
+.btn.primary{background:var(--primary);border-color:transparent}
+.btn.sm{padding:4px 8px;font-size:12px}
+.btn.danger{background:#3b0a0a;border-color:#6b1313}
+.input,select,textarea{width:100%;background:#0b0c10;color:#fff;border:1px solid #2b2f3a;padding:10px;border-radius:10px}
+.input.sm{width:110px}
+.view{display:none;padding:20px}
+.view.visible{display:block}
+.cards{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px}
+.card{background:var(--panel);border:1px solid #232631;border-radius:12px;padding:14px}
+.stat{font-size:28px;margin-top:4px}
+.table-wrap{background:var(--panel);border:1px solid #232631;border-radius:12px}
+.table{width:100%;border-collapse:collapse}
+.table th,.table td{border-bottom:1px solid #232631;padding:10px;text-align:left}
+.table tr:last-child td{border-bottom:none}
+.table-header{display:flex;align-items:center;justify-content:space-between;padding:12px}
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.panel{background:var(--panel);border:1px solid #232631;border-radius:12px;padding:14px;margin-bottom:12px}
+.row{display:flex;align-items:center}
+.row.end{justify-content:flex-end}
+.gap{gap:10px}
+.sig-wrap{background:#0b0c10;border:1px dashed #3b3f4d;border-radius:12px;padding:10px}
+#sigPad{width:100%;height:180px;background:#0b0c10;border-radius:8px}
+.totals{display:flex;align-items:center;gap:12px;justify-content:space-between;margin-top:10px;flex-wrap:wrap}
+.sum{margin-left:auto;display:grid;gap:6px}
+.sum .grand{font-size:20px}
+.actions{display:flex;gap:10px;flex-wrap:wrap}
+.toast{position:fixed;bottom:16px;right:16px;background:#11131a;border:1px solid #2c3240;padding:10px 12px;border-radius:10px;opacity:0;transform:translateY(8px);transition:all .25s;pointer-events:none}
+.toast.show{opacity:1;transform:translateY(0)}
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;padding:18px}
+.modal .modal-content{background:#0b0c10;border:1px solid #2b2f3a;border-radius:12px;padding:16px;width:min(900px,95vw);max-height:90vh;overflow:auto}
+.modal .modal-content.wide{width:min(1100px,95vw)}
+.modal.show{display:flex}
+.paper{background:var(--paper);color:#111;padding:24px;border-radius:6px;width:900px;margin:20px auto;border:1px solid #ddd;position:relative;overflow:hidden}
+.invoice-header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}
+.invoice-header.stack{flex-direction:column}
+.invoice-logo{width:160px;height:100px;object-fit:contain}
+.watermark{position:absolute;inset:0;pointer-events:none;display:flex;align-items:center;justify-content:center;font-size:110px;color:rgba(0,0,0,.06);transform:rotate(-25deg)}
+.badge{padding:4px 8px;border-radius:6px;font-size:12px;background:#eee;border:1px solid #ddd}
+.public .topbar{position:sticky;top:0}
+.preview-wrap{background:#0b0b0c;padding:12px}
+.preview-wrap .paper{box-shadow:0 10px 50px rgba(0,0,0,.4)}
+@media (max-width:980px){.two-col{grid-template-columns:1fr}.cards{grid-template-columns:1fr}.paper{width:100%}}
 (() => {
-  const $ = (sel, root=document) => root.querySelector(sel);
-  const $$ = (sel, root=document) => Array.from(root.querySelectorAll(sel));
-  const fmt = (n) => n.toLocaleString(undefined, { style:'currency', currency:'USD' });
-  const uid = () => (crypto.randomUUID ? crypto.randomUUID() : (Date.now().toString(36) + Math.random().toString(36).slice(2)));
-  const todayISO = () => new Date().toISOString().slice(0,10);
+  const $ = (s,r=document)=>r.querySelector(s);
+  const $$ = (s,r=document)=>Array.from(r.querySelectorAll(s));
+  const fmt = (n)=>n.toLocaleString(undefined,{style:'currency',currency:'USD'});
+  const uid = ()=> (crypto.randomUUID?crypto.randomUUID():Date.now().toString(36)+Math.random().toString(36).slice(2));
+  const todayISO = ()=> new Date().toISOString().slice(0,10);
+
+  // Native-aware API base (works fine in browser too)
+  const IS_NATIVE = !!(window.Capacitor && window.Capacitor.isNativePlatform);
+  const API_BASE = IS_NATIVE ? "https://weldpay.org/.netlify/functions" : "/.netlify/functions";
+  const ORIGIN = IS_NATIVE ? "https://weldpay.org" : location.origin;
 
   // State
-  let currentId = null;
-  let sigPad = null;
+  let currentId=null, sigPad=null;
   let settings = loadSettings();
   let invoices = loadInvoices();
 
   // Elements
-  const viewDashboard = $("#viewDashboard");
-  const viewEditor = $("#viewEditor");
-  const btnDashboard = $("#btnDashboard");
-  const btnNew = $("#btnNew");
-  const btnSettings = $("#btnSettings");
-  const invoiceTable = $("#invoiceTable tbody");
-  const searchInput = $("#searchInput");
+  const viewDashboard=$("#viewDashboard"), viewEditor=$("#viewEditor");
+  const btnDashboard=$("#btnDashboard"), btnNew=$("#btnNew"), btnSettings=$("#btnSettings");
+  const invoiceTable=$("#invoiceTable tbody"), searchInput=$("#searchInput");
+  const invForm=$("#invoiceForm"), clientName=$("#clientName"), clientEmail=$("#clientEmail"), clientPhone=$("#clientPhone");
+  const invoiceTitle=$("#invoiceTitle"), invoiceNumber=$("#invoiceNumber"), invoiceStatus=$("#invoiceStatus");
+  const issueDate=$("#issueDate"), dueDate=$("#dueDate");
+  const logoFile=$("#logoFile"), brandColor=$("#brandColor"), themeSelect=$("#themeSelect"), headerLayout=$("#headerLayout");
+  const itemsBody=$("#itemsBody"), rowTemplate=$("#rowTemplate"), btnAddItem=$("#btnAddItem");
+  const taxPct=$("#taxPct"), discountAmt=$("#discountAmt"), subtotalVal=$("#subtotalVal"), taxVal=$("#taxVal"), discountVal=$("#discountVal"), totalVal=$("#totalVal");
+  const sigCanvas=$("#sigPad"), esignAck=$("#esignAck"), notes=$("#notes");
+  const btnSave=$("#btnSave"), btnPreview=$("#btnPreview"), btnGeneratePDF=$("#btnGeneratePDF"), btnShareLink=$("#btnShareLink");
+  const btnSendEmail=$("#btnSendEmail"), btnSendSMS=$("#btnSendSMS");
+  const emailModal=$("#emailModal"), emailTo=$("#emailTo"), emailSubject=$("#emailSubject"), emailMessage=$("#emailMessage"), btnCloseEmail=$("#btnCloseEmail"), btnDoEmail=$("#btnDoEmail");
+  const previewModal=$("#previewModal"), invoicePreview=$("#invoicePreview"), btnClosePreview=$("#btnClosePreview");
+  const toast=$("#toast");
 
-  const invForm = $("#invoiceForm");
-  const clientName = $("#clientName");
-  const clientEmail = $("#clientEmail");
-  const clientPhone = $("#clientPhone");
-  const invoiceTitle = $("#invoiceTitle");
-  const invoiceNumber = $("#invoiceNumber");
-  const invoiceStatus = $("#invoiceStatus");
-  const issueDate = $("#issueDate");
-  const dueDate = $("#dueDate");
-  const logoFile = $("#logoFile");
-  const brandColor = $("#brandColor");
-  const themeSelect = $("#themeSelect");
-  const headerLayout = $("#headerLayout");
-  const itemsBody = $("#itemsBody");
-  const rowTemplate = $("#rowTemplate");
-  const btnAddItem = $("#btnAddItem");
-  const taxPct = $("#taxPct");
-  const discountAmt = $("#discountAmt");
-  const subtotalVal = $("#subtotalVal");
-  const taxVal = $("#taxVal");
-  const discountVal = $("#discountVal");
-  const totalVal = $("#totalVal");
-  const sigCanvas = $("#sigPad");
-  const esignAck = $("#esignAck");
-  const notes = $("#notes");
-
-  const btnSave = $("#btnSave");
-  const btnPreview = $("#btnPreview");
-  const btnGeneratePDF = $("#btnGeneratePDF");
-  const btnShareLink = $("#btnShareLink");
-  const btnSendEmail = $("#btnSendEmail");
-  const btnSendSMS = $("#btnSendSMS");
-
-  const emailModal = $("#emailModal");
-  const emailTo = $("#emailTo");
-  const emailSubject = $("#emailSubject");
-  const emailMessage = $("#emailMessage");
-  const btnCloseEmail = $("#btnCloseEmail");
-  const btnDoEmail = $("#btnDoEmail");
-
-  const previewModal = $("#previewModal");
-  const invoicePreview = $("#invoicePreview");
-  const btnClosePreview = $("#btnClosePreview");
-
-  const toast = $("#toast");
-
-  // ---- Server persistence (Netlify Functions + Blobs), with local fallback ----
-  const API_SECRET = (localStorage.getItem("weldpay/apiSecret") || ""); // optional
-  async function apiListInvoices() {
-    try {
-      const res = await fetch("/.netlify/functions/invoices", { headers: API_SECRET ? { "x-api-secret": API_SECRET } : {} });
-      if (!res.ok) throw 0;
-      const data = await res.json();
-      return data.items || [];
-    } catch { return null; }
-  }
-  async function apiGetInvoice(id) {
-    try {
-      const res = await fetch("/.netlify/functions/invoices?id=" + encodeURIComponent(id), { headers: API_SECRET ? { "x-api-secret": API_SECRET } : {} });
-      if (!res.ok) throw 0;
-      return await res.json();
-    } catch { return null; }
-  }
-  async function apiSaveInvoice(inv) {
-    try {
-      const res = await fetch("/.netlify/functions/invoices", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...(API_SECRET ? { "x-api-secret": API_SECRET } : {}) },
-        body: JSON.stringify(inv)
-      });
-      if (!res.ok) throw 0;
-      return await res.json();
-    } catch { return null; }
-  }
-  async function apiDeleteInvoice(id) {
-    try {
-      const res = await fetch("/.netlify/functions/invoices?id=" + encodeURIComponent(id), {
-        method: "DELETE",
-        headers: API_SECRET ? { "x-api-secret": API_SECRET } : {}
-      });
-      if (!res.ok) throw 0;
-      return true;
-    } catch { return null; }
-  }
-
-  // Initialize signature pad
-  function initSig() {
-    sigPad = new SignaturePad(sigCanvas, { backgroundColor: "rgba(0,0,0,0)", penColor: settings.brandColor || "#ef4444" });
-    function resizeSig() {
-      const ratio = Math.max(window.devicePixelRatio || 1, 1);
-      sigCanvas.width = sigCanvas.offsetWidth * ratio;
-      sigCanvas.height = sigCanvas.offsetHeight * ratio;
-      sigCanvas.getContext("2d").scale(ratio, ratio);
-    }
-    window.addEventListener("resize", resizeSig);
-    resizeSig();
-  }
+  // API helpers (Netlify Functions + Blobs), with optional secret
+  const API_SECRET = localStorage.getItem("weldpay/apiSecret") || "";
+  const authHeader = API_SECRET ? { "x-api-secret": API_SECRET } : {};
+  async function apiListInvoices(){ try{ const r=await fetch(`${API_BASE}/invoices`,{headers:authHeader}); if(!r.ok) throw 0; return (await r.json()).items||[]; }catch{return null;} }
+  async function apiGetInvoice(id){ try{ const r=await fetch(`${API_BASE}/invoices?id=${encodeURIComponent(id)}`,{headers:authHeader}); if(!r.ok) throw 0; return await r.json(); }catch{return null;} }
+  async function apiSaveInvoice(inv){ try{ const r=await fetch(`${API_BASE}/invoices`,{method:"POST",headers:{ "Content-Type":"application/json",...authHeader},body:JSON.stringify(inv)}); if(!r.ok) throw 0; return await r.json(); }catch{return null;} }
+  async function apiDeleteInvoice(id){ try{ const r=await fetch(`${API_BASE}/invoices?id=${encodeURIComponent(id)}`,{method:"DELETE",headers:authHeader}); if(!r.ok) throw 0; return true; }catch{return null;} }
 
   // Settings
-  function loadSettings() {
-    const s = JSON.parse(localStorage.getItem("weldpay/settings") || "{}");
-    return Object.assign({
-      brandColor: "#ef4444",
-      theme: "dark",
-      headerLayout: "logo-left",
-      businessName: "JHTigWorks LLC",
-      businessEmail: "info@weldpay.org",
-      businessPhone: "",
-      businessAddress: "",
-      stripeMode: "function", // "function" | "paymentlink" | "off"
-      paymentLinkURL: ""
-    }, s);
-  }
-  function saveSettings() {
-    localStorage.setItem("weldpay/settings", JSON.stringify(settings));
-    document.documentElement.style.setProperty("--primary", settings.brandColor);
+  function loadSettings(){ const s=JSON.parse(localStorage.getItem("weldpay/settings")||"{}"); return Object.assign({brandColor:"#ef4444",theme:"dark",headerLayout:"logo-left",businessName:"JHTigWorks LLC",businessEmail:"info@weldpay.org",businessPhone:"",businessAddress:"",stripeMode:"function",paymentLinkURL:""},s); }
+  function saveSettings(){ localStorage.setItem("weldpay/settings",JSON.stringify(settings)); document.documentElement.style.setProperty("--primary",settings.brandColor); }
+
+  function loadInvoices(){ return JSON.parse(localStorage.getItem("weldpay/invoices")||"[]"); }
+  function saveInvoices(){ localStorage.setItem("weldpay/invoices",JSON.stringify(invoices)); }
+
+  function initSig(){
+    sigPad = new SignaturePad(sigCanvas,{backgroundColor:"rgba(0,0,0,0)",penColor:settings.brandColor||"#ef4444"});
+    const resize = ()=>{ const ratio=Math.max(window.devicePixelRatio||1,1); sigCanvas.width=sigCanvas.offsetWidth*ratio; sigCanvas.height=sigCanvas.offsetHeight*ratio; sigCanvas.getContext("2d").scale(ratio,ratio); };
+    window.addEventListener("resize",resize); resize();
   }
 
-  // Invoices (local cache)
-  function loadInvoices(){ return JSON.parse(localStorage.getItem("weldpay/invoices") || "[]"); }
-  function saveInvoices(){ localStorage.setItem("weldpay/invoices", JSON.stringify(invoices)); }
+  function show(view){ [viewDashboard,viewEditor].forEach(v=>v.classList.remove("visible")); view.classList.add("visible"); }
+  function showToast(msg){ toast.textContent=msg; toast.classList.add("show"); setTimeout(()=>toast.classList.remove("show"),2000); }
 
-  // UI helpers
-  function show(view) {
-    [viewDashboard, viewEditor].forEach(v => v.classList.remove("visible"));
-    view.classList.add("visible");
-  }
-  function showToast(msg) {
-    toast.textContent = msg;
-    toast.classList.add("show");
-    setTimeout(() => toast.classList.remove("show"), 2000);
-  }
+  function computeTotals(inv){ const subtotal=(inv.items||[]).reduce((a,it)=>a+(Number(it.qty||0)*Number(it.rate||0)),0); const tax=subtotal*(Number(inv.taxPct||0)/100); const discount=Number(inv.discountAmt||0); return {subtotal,tax,discount,total:Math.max(0,subtotal+tax-discount)}; }
 
-  // Dashboard list + stats
-  function computeTotals(inv) {
-    const subtotal = inv.items.reduce((a, it) => a + (Number(it.qty||0)*Number(it.rate||0)), 0);
-    const tax = subtotal * (Number(inv.taxPct||0)/100);
-    const discount = Number(inv.discountAmt||0);
-    const total = Math.max(0, subtotal + tax - discount);
-    return { subtotal, tax, discount, total };
-  }
-
-  function refreshDashboard() {
-    const q = (searchInput.value || "").trim().toLowerCase();
-    const filtered = invoices.filter(inv => {
-      const t = [inv.clientName, inv.number, inv.status].join(" ").toLowerCase();
-      return t.includes(q);
-    }).sort((a,b) => (b.updatedAt||0) - (a.updatedAt||0));
-
-    // Stats
-    const outstanding = filtered
-      .filter(inv => !["PAID","VOID","ESTIMATE"].includes(inv.status))
-      .reduce((sum, inv) => sum + computeTotals(inv).total, 0);
-    $("#statOutstanding").textContent = fmt(outstanding);
-    $("#statOpenCount").textContent = filtered.filter(inv => !["PAID","VOID"].includes(inv.status)).length;
-    $("#statEstimateCount").textContent = filtered.filter(inv => inv.status==="ESTIMATE").length;
-
-    // Table
-    invoiceTable.innerHTML = "";
-    for (const inv of filtered.slice(0, 200)) {
-      const tr = document.createElement("tr");
-      const totals = computeTotals(inv);
-      tr.innerHTML = `
-        <td>${inv.number||"—"}</td>
-        <td>${inv.clientName||"—"}</td>
-        <td>${inv.status}</td>
-        <td>${fmt(totals.total)}</td>
-        <td>${inv.dueDate||"—"}</td>
-        <td>${inv.updatedAt ? new Date(inv.updatedAt).toLocaleString() : "—"}</td>
-        <td><button class="btn sm" data-id="${inv.id}" data-action="edit">Edit</button></td>
-      `;
+  function refreshDashboard(){
+    const q=(searchInput.value||"").trim().toLowerCase();
+    const filtered=invoices.filter(inv=>[inv.clientName,inv.number,inv.status].join(" ").toLowerCase().includes(q)).sort((a,b)=>(b.updatedAt||0)-(a.updatedAt||0));
+    const outstanding=filtered.filter(inv=>!["PAID","VOID","ESTIMATE"].includes(inv.status)).reduce((s,inv)=>s+computeTotals(inv).total,0);
+    $("#statOutstanding").textContent=fmt(outstanding);
+    $("#statOpenCount").textContent=filtered.filter(inv=>!["PAID","VOID"].includes(inv.status)).length;
+    $("#statEstimateCount").textContent=filtered.filter(inv=>inv.status==="ESTIMATE").length;
+    invoiceTable.innerHTML="";
+    for(const inv of filtered.slice(0,200)){
+      const tr=document.createElement("tr"); const totals=computeTotals(inv);
+      tr.innerHTML=`<td>${inv.number||"—"}</td><td>${inv.clientName||"—"}</td><td>${inv.status}</td><td>${fmt(totals.total)}</td><td>${inv.dueDate||"—"}</td><td>${inv.updatedAt?new Date(inv.updatedAt).toLocaleString():"—"}</td><td><button class="btn sm" data-id="${inv.id}" data-action="edit">Edit</button></td>`;
       invoiceTable.appendChild(tr);
     }
   }
 
-  // New invoice
-  function newInvoice(prefill={}) {
-    currentId = null;
-    invForm.reset();
-    itemsBody.innerHTML = "";
-    addItemRow();
-    invoiceStatus.value = prefill.status || "DRAFT";
-    clientEmail.value = prefill.clientEmail || "";
-    clientPhone.value = prefill.clientPhone || "";
-    issueDate.value = todayISO();
-    dueDate.value = prefill.dueDate || "";
-    brandColor.value = settings.brandColor;
-    themeSelect.value = settings.theme || "dark";
-    headerLayout.value = settings.headerLayout || "logo-left";
-    esignAck.value = "I acknowledge and agree to the described work, price, and terms.";
-    notes.value = "";
-    renderTotals();
-    show(viewEditor);
+  function newInvoice(prefill={}){
+    currentId=null; invForm.reset(); itemsBody.innerHTML=""; addItemRow();
+    invoiceStatus.value=prefill.status||"DRAFT"; clientEmail.value=prefill.clientEmail||""; clientPhone.value=prefill.clientPhone||"";
+    issueDate.value=todayISO(); dueDate.value=prefill.dueDate||""; brandColor.value=settings.brandColor; themeSelect.value=settings.theme; headerLayout.value=settings.headerLayout;
+    esignAck.value="I acknowledge and agree to the described work, price, and terms."; notes.value=""; renderTotals(); show(viewEditor);
+  }
+  function loadInvoice(id){
+    const inv=invoices.find(x=>x.id===id); if(!inv) return; currentId=id;
+    clientName.value=inv.clientName||""; clientEmail.value=inv.clientEmail||""; clientPhone.value=inv.clientPhone||"";
+    invoiceTitle.value=inv.title||""; invoiceNumber.value=inv.number||""; invoiceStatus.value=inv.status||"DRAFT";
+    issueDate.value=inv.issueDate||todayISO(); dueDate.value=inv.dueDate||"";
+    brandColor.value=inv.brandColor||settings.brandColor; themeSelect.value=inv.theme||settings.theme; headerLayout.value=inv.headerLayout||settings.headerLayout;
+    taxPct.value=inv.taxPct||0; discountAmt.value=inv.discountAmt||0; esignAck.value=inv.esignAck||"I acknowledge and agree..."; notes.value=inv.notes||"";
+    itemsBody.innerHTML=""; (inv.items||[]).forEach(addItemRow);
+    sigPad.clear(); if(inv.signatureDataUrl){ const img=new Image(); img.onload=()=>sigCanvas.getContext("2d").drawImage(img,0,0,sigCanvas.width,sigCanvas.height); img.src=inv.signatureDataUrl; }
+    renderTotals(); show(viewEditor);
   }
 
-  // Edit invoice
-  function loadInvoice(id) {
-    const inv = invoices.find(x => x.id===id);
-    if (!inv) return;
-    currentId = id;
-    clientName.value = inv.clientName || "";
-    clientEmail.value = inv.clientEmail || "";
-    clientPhone.value = inv.clientPhone || "";
-    invoiceTitle.value = inv.title || "";
-    invoiceNumber.value = inv.number || "";
-    invoiceStatus.value = inv.status || "DRAFT";
-    issueDate.value = inv.issueDate || todayISO();
-    dueDate.value = inv.dueDate || "";
-    brandColor.value = inv.brandColor || settings.brandColor;
-    themeSelect.value = inv.theme || settings.theme;
-    headerLayout.value = inv.headerLayout || settings.headerLayout;
-    taxPct.value = inv.taxPct || 0;
-    discountAmt.value = inv.discountAmt || 0;
-    esignAck.value = inv.esignAck || "I acknowledge and agree to the described work, price, and terms.";
-    notes.value = inv.notes || "";
-    itemsBody.innerHTML = "";
-    (inv.items||[]).forEach(addItemRow);
-    // redraw signature image if exists
-    sigPad.clear();
-    if (inv.signatureDataUrl) {
-      const img = new Image();
-      img.onload = () => {
-        const ctx = sigCanvas.getContext("2d");
-        ctx.drawImage(img, 0, 0, sigCanvas.width, sigCanvas.height);
-      };
-      img.src = inv.signatureDataUrl;
-    } else {
-      sigPad.clear();
-    }
-    renderTotals();
-    show(viewEditor);
-  }
-
-  // Items
-  function addItemRow(it={desc:"", qty:1, rate:0}) {
-    const row = rowTemplate.content.firstElementChild.cloneNode(true);
-    row.querySelector('[data-field="desc"]').value = it.desc || "";
-    row.querySelector('[data-field="qty"]').value = it.qty ?? 1;
-    row.querySelector('[data-field="rate"]').value = it.rate ?? 0;
-    row.querySelector('.amount').textContent = fmt(Number(it.qty||0)*Number(it.rate||0));
+  function addItemRow(it={desc:"",qty:1,rate:0}){
+    const row=rowTemplate.content.firstElementChild.cloneNode(true);
+    row.querySelector('[data-field="desc"]').value=it.desc||"";
+    row.querySelector('[data-field="qty"]').value=it.qty??1;
+    row.querySelector('[data-field="rate"]').value=it.rate??0;
+    row.querySelector('.amount').textContent=fmt(Number(it.qty||0)*Number(it.rate||0));
     itemsBody.appendChild(row);
   }
-  function collectItems() {
-    return $$('#itemsBody tr').map(tr => ({
-      desc: tr.querySelector('[data-field="desc"]').value.trim(),
-      qty: Number(tr.querySelector('[data-field="qty"]').value || 0),
-      rate: Number(tr.querySelector('[data-field="rate"]').value || 0),
-    }));
-  }
-  function renderTotals() {
-    const items = collectItems();
-    const subtotal = items.reduce((a,it)=>a+(Number(it.qty||0)*Number(it.rate||0)),0);
-    const tax = subtotal * (Number(taxPct.value||0)/100);
-    const discount = Number(discountAmt.value||0);
-    const total = Math.max(0, subtotal + tax - discount);
-    subtotalVal.textContent = fmt(subtotal);
-    taxVal.textContent = fmt(tax);
-    discountVal.textContent = "-" + fmt(discount).replace("-", "");
-    totalVal.textContent = fmt(total);
-  }
+  function collectItems(){ return $$('#itemsBody tr').map(tr=>({desc:tr.querySelector('[data-field="desc"]').value.trim(), qty:Number(tr.querySelector('[data-field="qty"]').value||0), rate:Number(tr.querySelector('[data-field="rate"]').value||0)})); }
+  function renderTotals(){ const items=collectItems(); const subtotal=items.reduce((a,it)=>a+(Number(it.qty||0)*Number(it.rate||0)),0); const tax=subtotal*(Number(taxPct.value||0)/100); const discount=Number(discountAmt.value||0); const total=Math.max(0,subtotal+tax-discount); subtotalVal.textContent=fmt(subtotal); taxVal.textContent=fmt(tax); discountVal.textContent="-"+fmt(discount).replace("-",""); totalVal.textContent=fmt(total); }
 
-  // Save
-  async function onSave() {
-    const items = collectItems();
-    const data = {
-      id: currentId || uid(),
-      clientName: clientName.value.trim(),
-      clientEmail: clientEmail.value.trim(),
-      clientPhone: clientPhone.value.trim(),
-      title: invoiceTitle.value.trim(),
-      number: invoiceNumber.value.trim(),
-      status: invoiceStatus.value,
-      issueDate: issueDate.value,
-      dueDate: dueDate.value,
-      taxPct: Number(taxPct.value||0),
-      discountAmt: Number(discountAmt.value||0),
-      items,
-      esignAck: esignAck.value.trim(),
-      notes: notes.value.trim(),
-      brandColor: brandColor.value,
-      theme: themeSelect.value,
-      headerLayout: headerLayout.value,
-      updatedAt: Date.now()
+  async function onSave(){
+    const items=collectItems();
+    const data={ id:currentId||uid(), clientName:clientName.value.trim(), clientEmail:clientEmail.value.trim(), clientPhone:clientPhone.value.trim(),
+      title:invoiceTitle.value.trim(), number:invoiceNumber.value.trim(), status:invoiceStatus.value, issueDate:issueDate.value, dueDate:dueDate.value,
+      taxPct:Number(taxPct.value||0), discountAmt:Number(discountAmt.value||0), items, esignAck:esignAck.value.trim(), notes:notes.value.trim(),
+      brandColor:brandColor.value, theme:themeSelect.value, headerLayout:headerLayout.value, updatedAt:Date.now()
     };
-    try {
-      // signature
-      if (!sigPad.isEmpty()) {
-        data.signatureDataUrl = sigPad.toDataURL();
-        data.signedAt = new Date().toISOString();
-      }
-    } catch(e){ /* noop */ }
-
-    // optional: logo as data URL (store in settings to reuse across invoices)
-    const logoInput = logoFile;
-    if (logoInput && logoInput.files && logoInput.files[0]) {
-      const file = logoInput.files[0];
-      const b64 = await fileToDataURL(file);
-      settings.logoDataUrl = b64;
-      settings.brandColor = brandColor.value;
-      settings.theme = themeSelect.value;
-      settings.headerLayout = headerLayout.value;
-      saveSettings();
-    }
-
-    // upsert (local)
-    const idx = invoices.findIndex(x => x.id===data.id);
-    if (idx >= 0) invoices[idx] = data; else invoices.unshift(data);
-    saveInvoices();
-
-    showToast("Saved");
-    currentId = data.id;
-    // try server save (non-blocking)
-    apiSaveInvoice(data);
-    refreshDashboard();
+    if(!sigPad.isEmpty()){ data.signatureDataUrl=sigPad.toDataURL(); data.signedAt=new Date().toISOString(); }
+    if(logoFile?.files?.[0]){ const b64=await fileToDataURL(logoFile.files[0]); settings.logoDataUrl=b64; settings.brandColor=brandColor.value; settings.theme=themeSelect.value; settings.headerLayout=headerLayout.value; saveSettings(); }
+    const idx=invoices.findIndex(x=>x.id===data.id); if(idx>=0) invoices[idx]=data; else invoices.unshift(data); saveInvoices();
+    showToast("Saved"); currentId=data.id; apiSaveInvoice(data); refreshDashboard();
   }
+  function fileToDataURL(file){ return new Promise((res,rej)=>{ const fr=new FileReader(); fr.onload=()=>res(fr.result); fr.onerror=rej; fr.readAsDataURL(file); }); }
 
-  function fileToDataURL(file) {
-    return new Promise((resolve, reject) => {
-      const fr = new FileReader();
-      fr.onload = () => resolve(fr.result);
-      fr.onerror = reject;
-      fr.readAsDataURL(file);
-    });
-  }
-
-  // Preview & PDF
-  function renderInvoiceHTML(inv) {
-    const { subtotal, tax, discount, total } = computeTotals(inv);
-    const watermark = inv.status==="PAID" ? "PAID" : (inv.status==="ESTIMATE" ? "ESTIMATE" : "");
-    const headerClass = inv.headerLayout==="stacked" ? "invoice-header stack" : "invoice-header";
-    const logoSideLeft = inv.headerLayout!=="logo-right";
-    const businessHtml = `
-      <div>
-        <h2>${settings.businessName||"Your Business"}</h2>
-        <div>${settings.businessAddress||""}</div>
-        <div>${settings.businessEmail||""}${settings.businessPhone ? " • "+settings.businessPhone : ""}</div>
-      </div>
-    `;
-    const logoHtml = settings.logoDataUrl ? `<img class="invoice-logo" src="${settings.logoDataUrl}" alt="logo" />` : `<div style="width:160px;height:100px;border:1px dashed #bbb;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#999">Logo</div>`;
-
-    const itemsHtml = inv.items.map(it => `
-      <tr>
-        <td>${escapeHtml(it.desc||"")}</td>
-        <td style="text-align:right">${Number(it.qty||0)}</td>
-        <td style="text-align:right">${fmt(Number(it.rate||0))}</td>
-        <td style="text-align:right">${fmt(Number(it.qty||0)*Number(it.rate||0))}</td>
-      </tr>
-    `).join("");
-
-    const sigHtml = inv.signatureDataUrl ? `
-      <div style="margin-top:10px">
-        <img src="${inv.signatureDataUrl}" style="width:280px;height:90px;object-fit:contain;border-bottom:1px solid #999" />
-        <div style="font-size:12px;color:#555;margin-top:6px;">${escapeHtml(inv.esignAck||"")}</div>
-        <div style="font-size:12px;color:#555;margin-top:4px;">Signed: ${new Date(inv.signedAt||inv.updatedAt||Date.now()).toLocaleString()}</div>
-      </div>
-    ` : `<div style="font-size:12px;color:#777;margin-top:10px;">No signature captured.</div>`;
-
-    const badge = `<span class="badge">${inv.status}</span>`;
-
+  function escapeHtml(s){return (s||"").replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));}
+  function renderInvoiceHTML(inv){
+    const {subtotal,tax,discount,total}=computeTotals(inv);
+    const watermark=inv.status==="PAID"?"PAID":(inv.status==="ESTIMATE"?"ESTIMATE":"");
+    const headerClass=inv.headerLayout==="stacked"?"invoice-header stack":"invoice-header";
+    const logoSideLeft=inv.headerLayout!=="logo-right";
+    const businessHtml=`<div><h2>${settings.businessName||"Your Business"}</h2><div>${settings.businessAddress||""}</div><div>${settings.businessEmail||""}${settings.businessPhone?" • "+settings.businessPhone:""}</div></div>`;
+    const logoHtml=settings.logoDataUrl?`<img class="invoice-logo" src="${settings.logoDataUrl}" alt="logo" />`:`<div style="width:160px;height:100px;border:1px dashed #bbb;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#999">Logo</div>`;
+    const itemsHtml=(inv.items||[]).map(it=>`<tr><td>${escapeHtml(it.desc||"")}</td><td style="text-align:right">${Number(it.qty||0)}</td><td style="text-align:right">${fmt(Number(it.rate||0))}</td><td style="text-align:right">${fmt(Number(it.qty||0)*Number(it.rate||0))}</td></tr>`).join("");
+    const sigHtml=inv.signatureDataUrl?`<div style="margin-top:10px"><img src="${inv.signatureDataUrl}" style="width:280px;height:90px;object-fit:contain;border-bottom:1px solid #999"/><div style="font-size:12px;color:#555;margin-top:6px;">${escapeHtml(inv.esignAck||"")}</div><div style="font-size:12px;color:#555;margin-top:4px;">Signed: ${new Date(inv.signedAt||inv.updatedAt||Date.now()).toLocaleString()}</div></div>`:"";
+    const badge=`<span class="badge">${inv.status}</span>`;
     return `
-      <div class="paper" style="--paper:${inv.theme==='dark' ? '#0d0f14' : '#ffffff'}; color:${inv.theme==='dark' ? '#e5e7eb' : '#111'}; border-color:${inv.theme==='dark' ? '#222' : '#ddd'};">
-        ${watermark ? `<div class="watermark">${watermark}</div>` : ""}
-        <div class="${headerClass}">
-          ${logoSideLeft ? logoHtml : businessHtml}
-          ${logoSideLeft ? businessHtml : logoHtml}
-        </div>
+      <div class="paper" style="--paper:${inv.theme==='dark'?'#0d0f14':'#ffffff'}; color:${inv.theme==='dark'?'#e5e7eb':'#111'}; border-color:${inv.theme==='dark'?'#222':'#ddd'};">
+        ${watermark?`<div class="watermark">${watermark}</div>`:""}
+        <div class="${headerClass}">${logoSideLeft?logoHtml:businessHtml}${logoSideLeft?businessHtml:logoHtml}</div>
         <hr/>
         <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin:6px 0;">
-          <div>
-            <div style="font-weight:600;font-size:20px">${escapeHtml(inv.title||"Invoice")}</div>
-            <div># ${escapeHtml(inv.number||"—")} • ${badge}</div>
-          </div>
-          <div style="text-align:right">
-            <div><b>Issue:</b> ${inv.issueDate || "—"}</div>
-            <div><b>Due:</b> ${inv.dueDate || "—"}</div>
-          </div>
+          <div><div style="font-weight:600;font-size:20px">${escapeHtml(inv.title||"Invoice")}</div><div># ${escapeHtml(inv.number||"—")} • ${badge}</div></div>
+          <div style="text-align:right"><div><b>Issue:</b> ${inv.issueDate||"—"}</div><div><b>Due:</b> ${inv.dueDate||"—"}</div></div>
         </div>
-        <div style="margin:6px 0 12px 0;">
-          <div><b>Bill To:</b> ${escapeHtml(inv.clientName||"—")}</div>
-          <div style="font-size:12px;color:#555">${escapeHtml(inv.clientEmail||"")} ${inv.clientPhone ? " • "+escapeHtml(inv.clientPhone) : ""}</div>
-        </div>
+        <div style="margin:6px 0 12px 0;"><div><b>Bill To:</b> ${escapeHtml(inv.clientName||"—")}</div><div style="font-size:12px;color:#555">${escapeHtml(inv.clientEmail||"")}${inv.clientPhone?" • "+escapeHtml(inv.clientPhone):""}</div></div>
         <table style="width:100%;border-collapse:collapse">
-          <thead>
-            <tr style="border-bottom:1px solid #ccc">
-              <th style="text-align:left;padding:8px 0">Description</th>
-              <th style="text-align:right;padding:8px 0">Qty</th>
-              <th style="text-align:right;padding:8px 0">Rate</th>
-              <th style="text-align:right;padding:8px 0">Amount</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${itemsHtml}
-          </tbody>
+          <thead><tr style="border-bottom:1px solid #ccc"><th style="text-align:left;padding:8px 0">Description</th><th style="text-align:right;padding:8px 0">Qty</th><th style="text-align:right;padding:8px 0">Rate</th><th style="text-align:right;padding:8px 0">Amount</th></tr></thead>
+          <tbody>${itemsHtml}</tbody>
         </table>
         <div style="display:flex;justify-content:flex-end;margin-top:12px;">
           <table>
@@ -824,187 +494,119 @@ html, body { margin:0; padding:0; background: var(--bg); color: var(--text); fon
             <tr><td style="padding:3px 8px"><b>Total:</b></td><td style="padding:3px 8px;text-align:right"><b>${fmt(total)}</b></td></tr>
           </table>
         </div>
-        <div style="margin-top:12px">
-          <div style="font-weight:600;margin-bottom:4px;">Notes</div>
-          <div style="white-space:pre-wrap">${escapeHtml(inv.notes||"")}</div>
-        </div>
+        <div style="margin-top:12px"><div style="font-weight:600;margin-bottom:4px;">Notes</div><div style="white-space:pre-wrap">${escapeHtml(inv.notes||"")}</div></div>
         ${sigHtml}
-      </div>
-    `;
+      </div>`;
   }
 
-  function escapeHtml(s) {
-    return (s||"").replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
-  }
-
-  function openPreview() {
-    const inv = collectInvoiceData();
-    invoicePreview.innerHTML = `<div class="preview-wrap">${renderInvoiceHTML(inv)}</div>`;
-    previewModal.classList.add("show");
-  }
+  function openPreview(){ const inv=collectInvoiceData(); invoicePreview.innerHTML=`<div class="preview-wrap">${renderInvoiceHTML(inv)}</div>`; previewModal.classList.add("show"); }
   function closePreview(){ previewModal.classList.remove("show"); }
+  function collectInvoiceData(){ return { id:currentId||uid(), clientName:clientName.value.trim(), clientEmail:clientEmail.value.trim(), clientPhone:clientPhone.value.trim(), title:invoiceTitle.value.trim(), number:invoiceNumber.value.trim(), status:invoiceStatus.value, issueDate:issueDate.value, dueDate:dueDate.value, taxPct:Number(taxPct.value||0), discountAmt:Number(discountAmt.value||0), items:collectItems(), esignAck:esignAck.value.trim(), notes:notes.value.trim(), brandColor:brandColor.value, theme:themeSelect.value, headerLayout:headerLayout.value, signatureDataUrl:(!sigPad.isEmpty()?sigPad.toDataURL():undefined), signedAt:(!sigPad.isEmpty()?new Date().toISOString():undefined), updatedAt:Date.now() }; }
 
-  function collectInvoiceData() {
-    return {
-      id: currentId || uid(),
-      clientName: clientName.value.trim(),
-      clientEmail: clientEmail.value.trim(),
-      clientPhone: clientPhone.value.trim(),
-      title: invoiceTitle.value.trim(),
-      number: invoiceNumber.value.trim(),
-      status: invoiceStatus.value,
-      issueDate: issueDate.value,
-      dueDate: dueDate.value,
-      taxPct: Number(taxPct.value||0),
-      discountAmt: Number(discountAmt.value||0),
-      items: collectItems(),
-      esignAck: esignAck.value.trim(),
-      notes: notes.value.trim(),
-      brandColor: brandColor.value,
-      theme: themeSelect.value,
-      headerLayout: headerLayout.value,
-      signatureDataUrl: (!sigPad.isEmpty() ? sigPad.toDataURL() : undefined),
-      signedAt: (!sigPad.isEmpty() ? new Date().toISOString() : undefined),
-      updatedAt: Date.now()
-    };
+  async function downloadPDF(inv){
+    const node=document.createElement("div"); node.innerHTML=renderInvoiceHTML(inv); document.body.appendChild(node);
+    const { jsPDF }=window.jspdf; const pdf=new jsPDF('p','pt','a4'); const paper=node.querySelector(".paper"); paper.style.width="794px";
+    const canvas=await html2canvas(paper,{scale:2}); const img=canvas.toDataURL('image/png'); const w=pdf.internal.pageSize.getWidth(); const h=canvas.height*(w/canvas.width);
+    pdf.addImage(img,'PNG',0,0,w,h); pdf.save((inv.number||'invoice')+'.pdf'); document.body.removeChild(node);
   }
 
-  async function downloadPDF(inv) {
-    const node = document.createElement("div");
-    node.innerHTML = renderInvoiceHTML(inv);
-    document.body.appendChild(node);
-    const { jsPDF } = window.jspdf;
-    const pdf = new jsPDF('p', 'pt', 'a4');
-    const paper = node.querySelector(".paper");
-    paper.style.width = "794px";
-    const canvas = await html2canvas(paper, { scale: 2 });
-    const imgData = canvas.toDataURL('image/png');
-    const pageWidth = pdf.internal.pageSize.getWidth();
-    const imgWidth = pageWidth;
-    const imgHeight = canvas.height * (imgWidth / canvas.width);
-    pdf.addImage(imgData, 'PNG', 0, 0, imgWidth, imgHeight);
-    pdf.save((inv.number || 'invoice') + '.pdf');
-    document.body.removeChild(node);
+  function buildPublicLink(inv){
+    const snapshot={...inv, logoDataUrl:settings.logoDataUrl||null, business:{name:settings.businessName,email:settings.businessEmail,phone:settings.businessPhone,address:settings.businessAddress}};
+    const enc=LZString.compressToEncodedURIComponent(JSON.stringify(snapshot));
+    return `${ORIGIN}/view.html?d=${enc}`;
   }
 
-  function buildPublicLink(inv) {
-    const snapshot = {
-      ...inv,
-      logoDataUrl: settings.logoDataUrl || null,
-      business: {
-        name: settings.businessName,
-        email: settings.businessEmail,
-        phone: settings.businessPhone,
-        address: settings.businessAddress
-      }
-    };
-    const json = JSON.stringify(snapshot);
-    const enc = LZString.compressToEncodedURIComponent(json);
-    const url = `${location.origin}/view.html?d=${enc}`;
-    return url;
+  async function sendEmail(inv){
+    const to=emailTo.value.trim()||inv.clientEmail; if(!to){showToast("Missing recipient");return;}
+    const link=buildPublicLink(inv);
+    const subject=emailSubject.value.trim()||`Invoice ${inv.number||""} from ${settings.businessName}`.trim();
+    const message=(emailMessage.value.trim()||`Hi ${inv.clientName||""},\n\nYour ${inv.status==="ESTIMATE"?"estimate":"invoice"} is ready.\nView & pay: ${link}\n\n— ${settings.businessName}`);
+    try{ const r=await fetch(`${API_BASE}/send-email`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({to,subject,message})}); if(r.ok){showToast("Email sent");emailModal.classList.remove("show");} else {showToast("Email not configured. Link copied.");await navigator.clipboard.writeText(link);} }catch{ showToast("Email unavailable. Link copied."); await navigator.clipboard.writeText(link); }
+  }
+  async function sendSMS(inv){
+    const to=inv.clientPhone; if(!to){showToast("Missing client phone");return;}
+    const link=buildPublicLink(inv);
+    try{ const r=await fetch(`${API_BASE}/send-sms`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({to,message:`Your ${inv.status==="ESTIMATE"?"estimate":"invoice"}: ${link}`})}); if(r.ok) showToast("SMS sent"); else {showToast("SMS not configured. Link copied."); await navigator.clipboard.writeText(link);} }catch{ showToast("SMS unavailable. Link copied."); await navigator.clipboard.writeText(link); }
+  }
+  async function handlePay(inv){
+    const {total}=computeTotals(inv);
+    if(settings.stripeMode==="paymentlink"&&settings.paymentLinkURL){ location.href=settings.paymentLinkURL; return; }
+    if(settings.stripeMode==="off"){ showToast("Payments disabled"); return; }
+    try{ const r=await fetch(`${API_BASE}/create-checkout-session`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({amount:Math.round(total*100),invoiceId:inv.id,description:`${inv.title||"Invoice"} (${inv.number||inv.id})`})}); const d=await r.json(); if(!r.ok) throw new Error(d.error||"Checkout unavailable"); if(d.url) location.href=d.url; else showToast("Stripe function missing URL"); }catch{ showToast("Checkout not configured"); }
   }
 
-  async function sendEmail(inv) {
-    const to = emailTo.value.trim() || inv.clientEmail;
-    if (!to) { showToast("Missing recipient"); return; }
-    const link = buildPublicLink(inv);
-    const subject = ema(() => {
-  const $ = (s, r=document) => r.querySelector(s);
-  const fmt = (n) => n.toLocaleString(undefined, { style:'currency', currency:'USD' });
+  // Events
+  btnDashboard.addEventListener("click",()=>show(viewDashboard));
+  btnNew.addEventListener("click",()=>newInvoice());
+  btnSettings.addEventListener("click",()=>{
+    const name=prompt("Business Name:",settings.businessName||""); if(name===null) return;
+    const email=prompt("Business Email:",settings.businessEmail||""); if(email===null) return;
+    const phone=prompt("Business Phone:",settings.businessPhone||""); if(phone===null) return;
+    const address=prompt("Business Address:",settings.businessAddress||""); if(address===null) return;
+    const mode=prompt('Payments mode: "function", "paymentlink", or "off"',settings.stripeMode); if(mode===null) return;
+    settings.businessName=name; settings.businessEmail=email; settings.businessPhone=phone; settings.businessAddress=address; settings.stripeMode=mode; saveSettings(); showToast("Settings saved");
+  });
 
-  function decodeSnapshot() {
-    const params = new URLSearchParams(location.search);
-    const enc = params.get("d");
-    if (!enc) return null;
-    try {
-      const json = LZString.decompressFromEncodedURIComponent(enc);
-      return JSON.parse(json);
-    } catch(e) { return null; }
+  invoiceTable.addEventListener("click",(e)=>{ const btn=e.target.closest("button[data-action='edit']"); if(!btn) return; loadInvoice(btn.dataset.id); });
+  searchInput.addEventListener("input",refreshDashboard);
+  btnAddItem.addEventListener("click",()=>addItemRow());
+  itemsBody.addEventListener("input",(e)=>{ if(e.target.matches('[data-field="qty"],[data-field="rate"]')){ const tr=e.target.closest("tr"); const qty=Number(tr.querySelector('[data-field="qty"]').value||0); const rate=Number(tr.querySelector('[data-field="rate"]').value||0); tr.querySelector(".amount").textContent=fmt(qty*rate); renderTotals(); } });
+  itemsBody.addEventListener("click",(e)=>{ if(e.target.dataset.action==="remove"){ e.target.closest("tr").remove(); renderTotals(); } });
+
+  $("#btnClearSig").addEventListener("click",()=>sigPad.clear());
+  [taxPct,discountAmt].forEach(el=>el.addEventListener("input",renderTotals));
+
+  btnSave.addEventListener("click",onSave);
+  btnPreview.addEventListener("click",openPreview);
+  btnClosePreview.addEventListener("click",closePreview);
+  btnGeneratePDF.addEventListener("click",async ()=>{ const inv=collectInvoiceData(); await downloadPDF(inv); });
+  btnShareLink.addEventListener("click",async ()=>{ const inv=collectInvoiceData(); const url=buildPublicLink(inv); await navigator.clipboard.writeText(url); showToast("Public link copied"); });
+
+  btnSendEmail.addEventListener("click",()=>{ const inv=collectInvoiceData(); emailTo.value=inv.clientEmail||""; emailSubject.value=`Invoice ${inv.number||""} from ${settings.businessName}`.trim(); emailMessage.value=`Hi ${inv.clientName||""},\n\nYour ${inv.status==="ESTIMATE"?"estimate":"invoice"} is ready.\nView & pay: (link inserted)\n\n— ${settings.businessName}`; emailModal.classList.add("show"); });
+  btnCloseEmail.addEventListener("click",()=>emailModal.classList.remove("show"));
+  btnDoEmail.addEventListener("click",()=>{ const inv=collectInvoiceData(); sendEmail(inv); });
+
+  btnSendSMS.addEventListener("click",()=>{ const inv=collectInvoiceData(); sendSMS(inv); });
+
+  // Init
+  function initializeData(){ (async()=>{ const list=await apiListInvoices(); if(list){ const full=[]; for(const row of list){ const inv=await apiGetInvoice(row.id); if(inv) full.push(inv);} invoices=full; saveInvoices(); } refreshDashboard(); })(); }
+  initSig(); document.documentElement.style.setProperty("--primary",settings.brandColor);
+  refreshDashboard(); newInvoice(); initializeData();
+})();
+(() => {
+  const $=(s,r=document)=>r.querySelector(s); const fmt=(n)=>n.toLocaleString(undefined,{style:'currency',currency:'USD'});
+  const IS_NATIVE=!!(window.Capacitor&&window.Capacitor.isNativePlatform);
+  const API_BASE=IS_NATIVE?"https://weldpay.org/.netlify/functions":"/.netlify/functions";
+  const ORIGIN=IS_NATIVE?"https://weldpay.org":location.origin;
+
+  function decodeSnapshot(){
+    const enc=new URLSearchParams(location.search).get("d"); if(!enc) return null;
+    try{ return JSON.parse(LZString.decompressFromEncodedURIComponent(enc)); }catch{ return null; }
   }
-  const snapshot = decodeSnapshot();
-  const container = $("#publicInvoice");
+  const snapshot=decodeSnapshot(); const container=$("#publicInvoice");
+  if(!snapshot){ container.innerHTML=`<div class="paper"><h2>Invoice not found</h2></div>`; return; }
 
-  if (!snapshot) {
-    container.innerHTML = `<div class="paper"><h2>Invoice not found</h2><p>Link is missing or invalid.</p></div>`;
-    return;
-  }
-
-  function computeTotals(inv) {
-    const subtotal = (inv.items||[]).reduce((a, it) => a + (Number(it.qty||0)*Number(it.rate||0)), 0);
-    const tax = subtotal * (Number(inv.taxPct||0)/100);
-    const discount = Number(inv.discountAmt||0);
-    const total = Math.max(0, subtotal + tax - discount);
-    return { subtotal, tax, discount, total };
-  }
-  function escapeHtml(s) {
-    return (s||"").replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
-  }
-  function renderInvoice(inv) {
-    const business = snapshot.business || {};
-    const { subtotal, tax, discount, total } = computeTotals(inv);
-    const watermark = inv.status==="PAID" ? "PAID" : (inv.status==="ESTIMATE" ? "ESTIMATE" : "");
-    const headerClass = inv.headerLayout==="stacked" ? "invoice-header stack" : "invoice-header";
-    const logoSideLeft = inv.headerLayout!=="logo-right";
-    const businessHtml = `
-      <div>
-        <h2>${escapeHtml(business.name||"Your Business")}</h2>
-        <div>${escapeHtml(business.address||"")}</div>
-        <div>${escapeHtml(business.email||"")}${business.phone ? " • "+escapeHtml(business.phone) : ""}</div>
-      </div>
-    `;
-    const logoHtml = snapshot.logoDataUrl ? `<img class="invoice-logo" src="${snapshot.logoDataUrl}" alt="logo" />` : `<div style="width:160px;height:100px;border:1px dashed #bbb;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#999">Logo</div>`;
-
-    const itemsHtml = (inv.items||[]).map(it => `
-      <tr>
-        <td>${escapeHtml(it.desc||"")}</td>
-        <td style="text-align:right">${Number(it.qty||0)}</td>
-        <td style="text-align:right">${fmt(Number(it.rate||0))}</td>
-        <td style="text-align:right">${fmt(Number(it.qty||0)*Number(it.rate||0))}</td>
-      </tr>
-    `).join("");
-
-    const sigHtml = inv.signatureDataUrl ? `
-      <div style="margin-top:10px">
-        <img src="${inv.signatureDataUrl}" style="width:280px;height:90px;object-fit:contain;border-bottom:1px solid #999" />
-        <div style="font-size:12px;color:#555;margin-top:6px;">${escapeHtml(inv.esignAck||"")}</div>
-        <div style="font-size:12px;color:#555;margin-top:4px;">Signed: ${new Date(inv.signedAt||inv.updatedAt||Date.now()).toLocaleString()}</div>
-      </div>
-    ` : ``;
-
+  function computeTotals(inv){ const subtotal=(inv.items||[]).reduce((a,it)=>a+(Number(it.qty||0)*Number(it.rate||0)),0); const tax=subtotal*(Number(inv.taxPct||0)/100); const discount=Number(inv.discountAmt||0); return {subtotal,tax,discount,total:Math.max(0,subtotal+tax-discount)}; }
+  function escapeHtml(s){return (s||"").replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+  function renderInvoice(inv){
+    const business=snapshot.business||{}; const {subtotal,tax,discount,total}=computeTotals(inv);
+    const watermark=inv.status==="PAID"?"PAID":(inv.status==="ESTIMATE"?"ESTIMATE":""); const headerClass=inv.headerLayout==="stacked"?"invoice-header stack":"invoice-header"; const logoSideLeft=inv.headerLayout!=="logo-right";
+    const businessHtml=`<div><h2>${escapeHtml(business.name||"Your Business")}</h2><div>${escapeHtml(business.address||"")}</div><div>${escapeHtml(business.email||"")}${business.phone?" • "+escapeHtml(business.phone):""}</div></div>`;
+    const logoHtml=snapshot.logoDataUrl?`<img class="invoice-logo" src="${snapshot.logoDataUrl}" alt="logo"/>`:`<div style="width:160px;height:100px;border:1px dashed #bbb;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#999">Logo</div>`;
+    const itemsHtml=(inv.items||[]).map(it=>`<tr><td>${escapeHtml(it.desc||"")}</td><td style="text-align:right">${Number(it.qty||0)}</td><td style="text-align:right">${fmt(Number(it.rate||0))}</td><td style="text-align:right">${fmt(Number(it.qty||0)*Number(it.rate||0))}</td></tr>`).join("");
+    const sigHtml=inv.signatureDataUrl?`<div style="margin-top:10px"><img src="${inv.signatureDataUrl}" style="width:280px;height:90px;object-fit:contain;border-bottom:1px solid #999"/><div style="font-size:12px;color:#555;margin-top:6px;">${escapeHtml(inv.esignAck||"")}</div><div style="font-size:12px;color:#555;margin-top:4px;">Signed: ${new Date(inv.signedAt||inv.updatedAt||Date.now()).toLocaleString()}</div></div>`:"";
     return `
-      <div class="paper" style="--paper:${inv.theme==='dark' ? '#0d0f14' : '#ffffff'}; color:${inv.theme==='dark' ? '#e5e7eb' : '#111'}; border-color:${inv.theme==='dark' ? '#222' : '#ddd'};">
-        ${watermark ? `<div class="watermark">${watermark}</div>` : ""}
-        <div class="${headerClass}">
-          ${logoSideLeft ? logoHtml : businessHtml}
-          ${logoSideLeft ? businessHtml : logoHtml}
-        </div>
+      <div class="paper" style="--paper:${inv.theme==='dark'?'#0d0f14':'#ffffff'}; color:${inv.theme==='dark'?'#e5e7eb':'#111'}; border-color:${inv.theme==='dark'?'#222':'#ddd'};">
+        ${watermark?`<div class="watermark">${watermark}</div>`:""}
+        <div class="${headerClass}">${logoSideLeft?logoHtml:businessHtml}${logoSideLeft?businessHtml:logoHtml}</div>
         <hr/>
         <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin:6px 0;">
-          <div>
-            <div style="font-weight:600;font-size:20px">${escapeHtml(inv.title||"Invoice")}</div>
-            <div># ${escapeHtml(inv.number||"—")} <span class="badge">${inv.status}</span></div>
-          </div>
-          <div style="text-align:right">
-            <div><b>Issue:</b> ${inv.issueDate || "—"}</div>
-            <div><b>Due:</b> ${inv.dueDate || "—"}</div>
-          </div>
-        </div>
-        <div style="margin:6px 0 12px 0%;">
-          <div><b>Bill To:</b> ${escapeHtml(inv.clientName||"—")}</div>
-          <div style="font-size:12px;color:#555">${escapeHtml(inv.clientEmail||"")} ${inv.clientPhone ? " • "+escapeHtml(inv.clientPhone) : ""}</div>
+          <div><div style="font-weight:600;font-size:20px">${escapeHtml(inv.title||"Invoice")}</div><div># ${escapeHtml(inv.number||"—")} <span class="badge">${inv.status}</span></div></div>
+          <div style="text-align:right"><div><b>Issue:</b> ${inv.issueDate||"—"}</div><div><b>Due:</b> ${inv.dueDate||"—"}</div></div>
         </div>
         <table style="width:100%;border-collapse:collapse">
-          <thead>
-            <tr style="border-bottom:1px solid #ccc">
-              <th style="text-align:left;padding:8px 0">Description</th>
-              <th style="text-align:right;padding:8px 0">Qty</th>
-              <th style="text-align:right;padding:8px 0">Rate</th>
-              <th style="text-align:right;padding:8px 0">Amount</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${itemsHtml}
-          </tbody>
+          <thead><tr style="border-bottom:1px solid #ccc"><th style="text-align:left;padding:8px 0">Description</th><th style="text-align:right;padding:8px 0">Qty</th><th style="text-align:right;padding:8px 0">Rate</th><th style="text-align:right;padding:8px 0">Amount</th></tr></thead>
+          <tbody>${itemsHtml}</tbody>
         </table>
         <div style="display:flex;justify-content:flex-end;margin-top:12px;">
           <table>
@@ -1014,77 +616,129 @@ html, body { margin:0; padding:0; background: var(--bg); color: var(--text); fon
             <tr><td style="padding:3px 8px"><b>Total:</b></td><td style="padding:3px 8px;text-align:right"><b>${fmt(total)}</b></td></tr>
           </table>
         </div>
-        <div style="margin-top:12px">
-          <div style="font-weight:600;margin-bottom:4px;">Notes</div>
-          <div style="white-space:pre-wrap">${escapeHtml(inv.notes||"")}</div>
-        </div>
+        <div style="margin-top:12px"><div style="font-weight:600;margin-bottom:4px;">Notes</div><div style="white-space:pre-wrap">${escapeHtml(inv.notes||"")}</div></div>
         ${sigHtml}
-      </div>
-    `;
+      </div>`;
   }
 
-  function mount() {
-    container.innerHTML = renderInvoice(snapshot);
-  }
+  function mount(){ container.innerHTML=renderInvoice(snapshot); }
 
   $("#btnDownload").addEventListener("click", async () => {
-    const node = container.querySelector(".paper");
-    const { jsPDF } = window.jspdf;
-    const pdf = new jsPDF('p', 'pt', 'a4');
-    node.style.width = "794px";
-    const canvas = await html2canvas(node, { scale: 2 });
-    const imgData = canvas.toDataURL('image/png');
-    const pageWidth = pdf.internal.pageSize.getWidth();
-    const imgWidth = pageWidth;
-    const imgHeight = canvas.height * (imgWidth / canvas.width);
-    pdf.addImage(imgData, 'PNG', 0, 0, imgWidth, imgHeight);
-    pdf.save((snapshot.number || 'invoice') + '.pdf');
+    const node=container.querySelector(".paper"); const {jsPDF}=window.jspdf; const pdf=new jsPDF('p','pt','a4');
+    node.style.width="794px"; const canvas=await html2canvas(node,{scale:2}); const img=canvas.toDataURL('image/png'); const w=pdf.internal.pageSize.getWidth(); const h=canvas.height*(w/canvas.width);
+    pdf.addImage(img,'PNG',0,0,w,h); pdf.save((snapshot.number||'invoice')+'.pdf');
   });
 
   $("#btnPay").addEventListener("click", async () => {
-    try {
-      const subtotal = (snapshot.items||[]).reduce((a, it) => a + (Number(it.qty||0)*Number(it.rate||0)), 0);
-      const tax = subtotal * (Number(snapshot.taxPct||0)/100);
-      const discount = Number(snapshot.discountAmt||0);
-      const total = Math.max(0, subtotal + tax - discount);
-      const res = await fetch("/.netlify/functions/create-checkout-session", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          amount: Math.round(total * 100),
-          invoiceId: snapshot.id,
-          description: `${snapshot.title||"Invoice"} (${snapshot.number||snapshot.id})`
-        })
-      });
-      const data = await res.json();
-      if (res.ok && data.url) { location.href = data.url; return; }
-      if (snapshot.paymentLinkURL) { location.href = snapshot.paymentLinkURL; return; }
+    try{
+      const subtotal=(snapshot.items||[]).reduce((a,it)=>a+(Number(it.qty||0)*Number(it.rate||0)),0);
+      const tax=subtotal*(Number(snapshot.taxPct||0)/100); const discount=Number(snapshot.discountAmt||0);
+      const total=Math.max(0, subtotal+tax-discount);
+      const r=await fetch(`${API_BASE}/create-checkout-session`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({amount:Math.round(total*100),invoiceId:snapshot.id,description:`${snapshot.title||"Invoice"} (${snapshot.number||snapshot.id})`})});
+      const d=await r.json(); if(r.ok&&d.url){ location.href=d.url; return; }
+      if(snapshot.paymentLinkURL){ location.href=snapshot.paymentLinkURL; return; }
       alert("Payment not configured");
-    } catch(e) {
-      if (snapshot.paymentLinkURL) location.href = snapshot.paymentLinkURL;
-      else alert("Payment not configured");
+    }catch(e){
+      if(snapshot.paymentLinkURL) location.href=snapshot.paymentLinkURL; else alert("Payment not configured");
     }
   });
 
   mount();
 })();
-// /.netlify/functions/send-email
-// Sends a simple email via SendGrid.
-const sgKey = process.env.SENDGRID_API_KEY || '';
-const fromEmail = process.env.FROM_EMAIL || '';
-
-exports.handler = async (event) => {
-  if (!sgKey || !fromEmail) {
-    return { statusCode: 501, body: JSON.stringify({ error: "Email not configured (SENDGRID_API_KEY, FROM_EMAIL)" }) };
-  }
-  const { to, subject, message } = JSON.parse(event.body || "{}");
+// ESM + Netlify Functions v1 — Invoice CRUD using Netlify Blobs
+export async function handler(event) {
   try {
+    const { getStore } = await import("@netlify/blobs");
+    const store = getStore("invoices");
+    const method = (event.httpMethod || "GET").toUpperCase();
+    const params = event.queryStringParameters || {};
+    const id = params.id || null;
+
+    if (process.env.API_SECRET) {
+      const secret = event.headers["x-api-secret"] || event.headers["X-Api-Secret"];
+      if (secret !== process.env.API_SECRET) return j({ error: "Unauthorized" }, 401);
+    }
+
+    if (method === "GET") {
+      if (id) {
+        const jsonStr = await store.get(id);
+        if (!jsonStr) return j({ error: "Not found" }, 404);
+        return raw(jsonStr, 200, { "Content-Type": "application/json" });
+      }
+      const list = await store.list();
+      const items = [];
+      for (const b of list.blobs || []) {
+        const data = JSON.parse(await store.get(b.key));
+        const subtotal = (data.items||[]).reduce((a,it)=>a + (Number(it.qty||0)*Number(it.rate||0)), 0);
+        const tax = subtotal * (Number(data.taxPct||0)/100);
+        const discount = Number(data.discountAmt||0);
+        const total = Math.max(0, subtotal + tax - discount);
+        items.push({ id:data.id, clientName:data.clientName, number:data.number, status:data.status, dueDate:data.dueDate, updatedAt:data.updatedAt, total });
+      }
+      items.sort((a,b)=>(b.updatedAt||0)-(a.updatedAt||0));
+      return j({ items });
+    }
+
+    if (method === "POST") {
+      const body = JSON.parse(event.body || "{}");
+      if (!body.id) return j({ error: "Missing id" }, 400);
+      await store.setJSON(body.id, body);
+      const saved = await store.get(body.id, { consistency: "strong" });
+      return raw(saved, 200, { "Content-Type": "application/json" });
+    }
+
+    if (method === "DELETE") {
+      if (!id) return j({ error: "Missing id" }, 400);
+      await store.delete(id);
+      return j({ ok: true });
+    }
+
+    return j({ error: "Method not allowed" }, 405);
+  } catch (err) {
+    return j({ error: err.message }, 500);
+  }
+}
+
+const j = (obj, status=200)=>({ statusCode:status, headers:{ "Content-Type":"application/json" }, body:JSON.stringify(obj) });
+const raw = (body, status=200, headers={})=>({ statusCode:status, headers, body });
+import Stripe from "stripe";
+
+export async function handler(event) {
+  if (!process.env.STRIPE_SECRET) return j({ error: "Stripe not configured (set STRIPE_SECRET)" }, 501);
+  try {
+    const { amount, invoiceId, description } = JSON.parse(event.body || "{}");
+    if (!amount || amount < 50) return j({ error: "Invalid amount" }, 400);
+
+    const stripe = new Stripe(process.env.STRIPE_SECRET);
+    const origin = process.env.SITE_URL || "http://localhost:8888";
+    const session = await stripe.checkout.sessions.create({
+      mode: "payment",
+      payment_method_types: ["card"],
+      line_items: [{
+        price_data: { currency:"usd", product_data:{ name: description || `Invoice ${invoiceId||""}`.trim() }, unit_amount: amount },
+        quantity: 1
+      }],
+      success_url: `${origin}/view.html?success=1`,
+      cancel_url: `${origin}/view.html?canceled=1`,
+      metadata: { invoiceId: invoiceId || "" }
+    });
+    return j({ url: session.url });
+  } catch (err) {
+    return j({ error: err.message }, 500);
+  }
+}
+
+const j = (obj, status=200)=>({ statusCode:status, headers:{ "Content-Type":"application/json" }, body:JSON.stringify(obj) });
+export async function handler(event) {
+  const sgKey = process.env.SENDGRID_API_KEY || "";
+  const fromEmail = process.env.FROM_EMAIL || "";
+  if (!sgKey || !fromEmail) return j({ error: "Email not configured" }, 501);
+
+  try {
+    const { to, subject, message } = JSON.parse(event.body || "{}");
     const res = await fetch("https://api.sendgrid.com/v3/mail/send", {
       method: "POST",
-      headers: {
-        "Authorization": `Bearer ${sgKey}`,
-        "Content-Type": "application/json"
-      },
+      headers: { Authorization: `Bearer ${sgKey}`, "Content-Type": "application/json" },
       body: JSON.stringify({
         personalizations: [{ to: [{ email: to }] }],
         from: { email: fromEmail, name: "WeldPay" },
@@ -1092,110 +746,35 @@ exports.handler = async (event) => {
         content: [{ type: "text/plain", value: message || "" }]
       })
     });
-    if (!res.ok) {
-      const t = await res.text();
-      return { statusCode: 500, body: JSON.stringify({ error: t }) };
-    }
-    return { statusCode: 200, body: JSON.stringify({ ok: true }) };
+    if (!res.ok) return j({ error: await res.text() }, 500);
+    return j({ ok: true });
   } catch (err) {
-    return { statusCode: 500, body: JSON.stringify({ error: err.message }) };
+    return j({ error: err.message }, 500);
   }
-};
-// /.netlify/functions/send-sms
-// Sends an SMS via Twilio Programmable SMS.
-const twSid = process.env.TWILIO_ACCOUNT_SID || '';
-const twAuth = process.env.TWILIO_AUTH_TOKEN || '';
-const twFrom = process.env.TWILIO_FROM || '';
+}
 
-exports.handler = async (event) => {
-  if (!twSid || !twAuth || !twFrom) {
-    return { statusCode: 501, body: JSON.stringify({ error: "SMS not configured (Twilio env vars missing)" }) };
-  }
-  const { to, message } = JSON.parse(event.body || "{}");
-  const creds = Buffer.from(`${twSid}:${twAuth}`).toString('base64');
-  const params = new URLSearchParams({ To: to, From: twFrom, Body: message });
+const j = (obj, status=200)=>({ statusCode:status, headers:{ "Content-Type":"application/json" }, body:JSON.stringify(obj) });
+export async function handler(event) {
+  const sid = process.env.TWILIO_ACCOUNT_SID || "";
+  const auth = process.env.TWILIO_AUTH_TOKEN || "";
+  const from = process.env.TWILIO_FROM || "";
+  if (!sid || !auth || !from) return j({ error: "SMS not configured" }, 501);
+
   try {
-    const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${twSid}/Messages.json`, {
+    const { to, message } = JSON.parse(event.body || "{}");
+    const creds = btoa(`${sid}:${auth}`);
+    const params = new URLSearchParams({ To: to, From: from, Body: message });
+    const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`, {
       method: "POST",
-      headers: { "Authorization": `Basic ${creds}`, "Content-Type": "application/x-www-form-urlencoded" },
+      headers: { Authorization: `Basic ${creds}`, "Content-Type": "application/x-www-form-urlencoded" },
       body: params.toString()
     });
     const data = await res.json();
-    if (res.ok) return { statusCode: 200, body: JSON.stringify({ sid: data.sid }) };
-    return { statusCode: 500, body: JSON.stringify({ error: data.message || "Twilio error" }) };
+    if (!res.ok) return j({ error: data.message || "Twilio error" }, 500);
+    return j({ sid: data.sid });
   } catch (err) {
-    return { statusCode: 500, body: JSON.stringify({ error: err.message }) };
+    return j({ error: err.message }, 500);
   }
-};
-// /.netlify/functions/invoices
-// Simple CRUD for invoices using Netlify Blobs (site-wide store).
-// Methods:
-//  - GET    /.netlify/functions/invoices            -> list (ids + minimal)
-//  - GET    /.netlify/functions/invoices?id=<id>    -> get one
-//  - POST   /.netlify/functions/invoices            -> create/update (body JSON, must include id)
-//  - DELETE /.netlify/functions/invoices?id=<id>    -> delete
+}
 
-export const config = { path: "/invoices" };
-
-export default async (req, context) => {
-  const { getStore } = await import("@netlify/blobs");
-  const store = getStore("invoices");
-  const url = new URL(req.url);
-  const id = url.searchParams.get("id");
-  const method = req.method.toUpperCase();
-
-  // Optional auth
-  const wantAuth = process.env.API_SECRET;
-  if (wantAuth) {
-    const header = req.headers.get("x-api-secret");
-    if (header !== process.env.API_SECRET) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401 });
-    }
-  }
-
-  try {
-    if (method === "GET") {
-      if (id) {
-        const json = await store.get(id);
-        if (!json) return new Response(JSON.stringify({ error: "Not found" }), { status: 404 });
-        return new Response(json, { headers: { "Content-Type": "application/json" } });
-      } else {
-        const all = await store.list();
-        const items = [];
-        for (const entry of all.blobs || []) {
-          const data = JSON.parse(await store.get(entry.key));
-          const subtotal = (data.items||[]).reduce((a,it)=>a + (Number(it.qty||0)*Number(it.rate||0)), 0);
-          const tax = subtotal * (Number(data.taxPct||0)/100);
-          const discount = Number(data.discountAmt||0);
-          const total = Math.max(0, subtotal + tax - discount);
-          items.push({
-            id: data.id, clientName: data.clientName, number: data.number,
-            status: data.status, dueDate: data.dueDate, updatedAt: data.updatedAt, total
-          });
-        }
-        items.sort((a,b) => (b.updatedAt||0) - (a.updatedAt||0));
-        return Response.json({ items });
-      }
-    }
-
-    if (method === "POST") {
-      const body = await req.json();
-      if (!body || !body.id) {
-        return new Response(JSON.stringify({ error: "Missing id" }), { status: 400 });
-      }
-      await store.setJSON(body.id, body);
-      const saved = await store.get(body.id, { consistency: "strong" });
-      return new Response(saved, { headers: { "Content-Type": "application/json" } });
-    }
-
-    if (method === "DELETE") {
-      if (!id) return new Response(JSON.stringify({ error: "Missing id" }), { status: 400 });
-      await store.delete(id);
-      return Response.json({ ok: true });
-    }
-
-    return new Response(JSON.stringify({ error: "Method not allowed" }), { status: 405 });
-  } catch (err) {
-    return new Response(JSON.stringify({ error: err.message }), { status: 500 });
-  }
-};
+const j = (obj, status=200)=>({ statusCode:status, headers:{ "Content-Type":"application/json" }, body:JSON.stringify(obj) });
