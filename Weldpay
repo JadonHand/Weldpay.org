@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>WeldPay — Invoices</title>
+  <link rel="stylesheet" href="/assets/styles.css" />
+  <!-- External libs -->
+  <script src="https://unpkg.com/lz-string@1.5.0/libs/lz-string.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/signature_pad@5.0.4/dist/signature_pad.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-logo"></div>
+      <div>
+        <h1>WeldPay</h1>
+        <small>Fast invoices for fabricators</small>
+      </div>
+    </div>
+    <nav class="nav">
+      <button id="btnDashboard" class="btn">Dashboard</button>
+      <button id="btnNew" class="btn primary">New Invoice</button>
+      <button id="btnSettings" class="btn">Settings</button>
+    </nav>
+  </header>
+
+  <main>
+    <!-- Dashboard -->
+    <section id="viewDashboard" class="view visible">
+      <div class="cards">
+        <div class="card">
+          <h3>Outstanding (excludes Estimates)</h3>
+          <div class="stat" id="statOutstanding">$0.00</div>
+        </div>
+        <div class="card">
+          <h3>Open Invoices</h3>
+          <div class="stat" id="statOpenCount">0</div>
+        </div>
+        <div class="card">
+          <h3>Estimates</h3>
+          <div class="stat" id="statEstimateCount">0</div>
+        </div>
+      </div>
+
+      <div class="table-wrap">
+        <div class="table-header">
+          <h2>Recent</h2>
+          <input id="searchInput" class="input" placeholder="Search client / # / status" />
+        </div>
+        <table class="table" id="invoiceTable">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Client</th>
+              <th>Status</th>
+              <th>Total</th>
+              <th>Due</th>
+              <th>Updated</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Editor -->
+    <section id="viewEditor" class="view">
+      <form id="invoiceForm" onsubmit="return false;">
+        <div class="two-col">
+          <div class="panel">
+            <h2>Client</h2>
+            <label>Client Name
+              <input class="input" id="clientName" placeholder="Customer LLC" />
+            </label>
+            <label>Email (prefilled to Email To)
+              <input class="input" id="clientEmail" placeholder="customer@email.com" />
+            </label>
+            <label>Phone (for SMS)
+              <input class="input" id="clientPhone" placeholder="+1 555-555-5555" />
+            </label>
+            <label>Invoice Title
+              <input class="input" id="invoiceTitle" placeholder="Trailer repair / garden beds" />
+            </label>
+            <label>Invoice Number
+              <input class="input" id="invoiceNumber" placeholder="INV-1001" />
+            </label>
+            <label>Status
+              <select class="input" id="invoiceStatus">
+                <option value="DRAFT">DRAFT</option>
+                <option value="ESTIMATE">ESTIMATE</option>
+                <option value="SENT">SENT</option>
+                <option value="PARTIAL">PARTIAL</option>
+                <option value="PAID">PAID</option>
+                <option value="VOID">VOID</option>
+              </select>
+            </label>
+            <div class="row gap">
+              <label>Issue Date
+                <input type="date" class="input" id="issueDate" />
+              </label>
+              <label>Due Date
+                <input type="date" class="input" id="dueDate" />
+              </label>
+            </div>
+          </div>
+
+          <div class="panel">
+            <h2>Branding</h2>
+            <label>Logo (PNG/SVG/JPG)
+              <input type="file" id="logoFile" accept="image/*" />
+            </label>
+            <div class="row">
+              <label>Brand Color
+                <input type="color" id="brandColor" />
+              </label>
+              <label>Theme
+                <select id="themeSelect">
+                  <option value="light">Light</option>
+                  <option value="dark">Dark</option>
+                </select>
+              </label>
+            </div>
+            <label>Header Layout
+              <select id="headerLayout">
+                <option value="logo-left">Logo left, info right</option>
+                <option value="logo-right">Logo right, info left</option>
+                <option value="stacked">Stacked</option>
+              </select>
+            </label>
+          </div>
+        </div>
+
+        <div class="panel">
+          <h2>Line Items</h2>
+          <table class="table" id="itemsTable">
+            <thead>
+              <tr>
+                <th>Description</th>
+                <th>Qty</th>
+                <th>Rate</th>
+                <th>Amount</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="itemsBody"></tbody>
+          </table>
+          <button class="btn" id="btnAddItem">+ Add Item</button>
+          <div class="totals">
+            <label>Tax % <input class="input sm" id="taxPct" type="number" step="0.01" value="0" /></label>
+            <label>Discount $ <input class="input sm" id="discountAmt" type="number" step="0.01" value="0" /></label>
+            <div class="sum">
+              <div>Subtotal: <span id="subtotalVal">$0.00</span></div>
+              <div>Tax: <span id="taxVal">$0.00</span></div>
+              <div>Discount: <span id="discountVal">-$0.00</span></div>
+              <div class="grand">Total: <span id="totalVal">$0.00</span></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="two-col">
+          <div class="panel">
+            <h2>Signature</h2>
+            <div class="sig-wrap">
+              <canvas id="sigPad"></canvas>
+              <div class="sig-actions">
+                <button class="btn" id="btnClearSig">Clear</button>
+              </div>
+            </div>
+            <label>E-Sign acknowledgment (shown under signature on PDF)
+              <textarea class="input" id="esignAck" rows="3" placeholder="I acknowledge the work description, price, and terms..."></textarea>
+            </label>
+          </div>
+
+          <div class="panel">
+            <h2>Notes & Terms</h2>
+            <textarea class="input" id="notes" rows="9" placeholder="Work details, terms, warranty notes, etc."></textarea>
+          </div>
+        </div>
+
+        <div class="panel actions">
+          <button class="btn primary" id="btnSave">Save</button>
+          <button class="btn" id="btnPreview">Preview</button>
+          <button class="btn" id="btnGeneratePDF">Download PDF</button>
+          <button class="btn" id="btnShareLink">Get Public Link</button>
+          <button class="btn" id="btnSendEmail">Email</button>
+          <button class="btn" id="btnSendSMS">SMS</button>
+        </div>
+
+        <div id="emailModal" class="modal">
+          <div class="modal-content">
+            <h3>Email Invoice</h3>
+            <label>Email To
+              <input class="input" id="emailTo" placeholder="client@email.com" />
+            </label>
+            <label>Subject
+              <input class="input" id="emailSubject" />
+            </label>
+            <label>Message
+              <textarea class="input" id="emailMessage" rows="4"></textarea>
+            </label>
+            <div class="row end gap">
+              <button class="btn" id="btnCloseEmail">Cancel</button>
+              <button class="btn primary" id="btnDoEmail">Send</button>
+            </div>
+          </div>
+        </div>
+
+        <div id="toast" class="toast"></div>
+      </form>
+    </section>
+  </main>
+
+  <template id="rowTemplate">
+    <tr>
+      <td><input class="input" data-field="desc" placeholder="Description" /></td>
+      <td><input class="input sm" data-field="qty" type="number" step="0.01" value="1" /></td>
+      <td><input class="input sm" data-field="rate" type="number" step="0.01" value="0" /></td>
+      <td class="amount">$0.00</td>
+      <td><button class="btn sm danger" data-action="remove">×</button></td>
+    </tr>
+  </template>
+
+  <div id="previewModal" class="modal">
+    <div class="modal-content wide">
+      <div id="invoicePreview"></div>
+      <div class="row end gap">
+        <button class="btn" id="btnClosePreview">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/assets/app.js"></script>
+</body>
+</html>
