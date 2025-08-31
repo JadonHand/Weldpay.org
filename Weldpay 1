@@ -3,7 +3,6 @@ view.html
 assets/
 functions/
 netlify.toml   (or _redirects)
-README.md
   README.md
   assets/
     styles.css
